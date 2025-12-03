@@ -4,7 +4,7 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import sys
 sys.path.append("../..")
-from DESSCA import dessca_model
+from dessca import dessca_model
 import os
 
 

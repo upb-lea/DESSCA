@@ -11,45 +11,16 @@ from rl.agents import DQNAgent
 from rl.memory import SequentialMemory
 from rl.policy import LinearAnnealedPolicy, EpsGreedyQPolicy
 
+from multiprocessing import Pool
+import tensorflow as tf
+
+import os
 import sys
 sys.path.append("../..")
-from DESSCA import dessca_model
+from dessca import dessca_model
 
-state_constraints = [[  - 1.0,    1.0], #+- 2.4
-                     [     -7,      7],
-                     [ -np.pi, +np.pi],
-                     [    -10,     10]]
 
-state_low = np.array(state_constraints)[:, 0]
-state_high = np.array(state_constraints)[:, 1]
-
-delta_v = 0.15
-tau = 0.02
-initial_states = []
-for _ in range(1000):
-    while True:
-        state = np.random.uniform(low=state_low, high=state_high)
-        if np.abs(state[3]) < 1:
-            if state[1] > 0:
-                if np.sqrt((1 - state[0]) / tau * delta_v) > state[1]:
-                    break
-            if state[1] < 0:
-                if -np.sqrt((1 + state[0]) / tau * delta_v) < state[1]:
-                    break
-    initial_states.append(state)
-initial_states = np.transpose(np.array(initial_states))
-data = {"initial_states": initial_states.tolist()}
-#
-# with open("ValidationInits.json", 'w') as json_file:
-#     data = json.dump(data, json_file)
-#
-# sys.exit()
-
-use_dessca = True
-
-with open("ValidationInits.json", 'r') as json_file:
-    data = json.load(json_file)
-    initial_states = np.copy(data["initial_states"])
+use_dessca = False
 
 
 class cartpole_reset_wrapper(Wrapper):
@@ -59,13 +30,17 @@ class cartpole_reset_wrapper(Wrapper):
         x1 = X[1]
         x2 = X[2]
         x3 = X[3]
-
         init_pdf = np.logical_and(
-            np.greater(np.minimum(np.sqrt((self.state_high[0] - x0) / self.env.tau * self.delta_v), self.state_high[1]), x1),
-            np.less(np.maximum(-np.sqrt((self.state_high[0] + x0) / self.env.tau * self.delta_v), -self.state_high[1]), x1),
+            np.logical_and(
+                np.greater(
+                    np.minimum(np.sqrt((self.state_high[0] - x0) / self.env.tau * self.delta_v), self.state_high[1]),
+                    x1),
+                np.less(
+                    np.maximum(-np.sqrt((self.state_high[0] + x0) / self.env.tau * self.delta_v), -self.state_high[1]),
+                    x1),
+            ),
             np.less(np.abs(x3), 1)
         ).astype(float)
-
         return init_pdf
 
     def __init__(self, environment, try_nb):
@@ -75,7 +50,8 @@ class cartpole_reset_wrapper(Wrapper):
         self.state_saver = None
         self._episode_reward_list = []
 
-        state_constraints = [[  - 1.0,    1.0], #+- 2.4
+
+        state_constraints = [[  - 1,    1], # +- 2.4
                              [     -7,      7],
                              [ -np.pi, +np.pi],
                              [    -10,     10]]
@@ -90,8 +66,6 @@ class cartpole_reset_wrapper(Wrapper):
 
         self.delta_v = 0.15
 
-        self._init_state_iterator = 0
-
     def step(self, action):
         state, reward, done, _ = self.env.step(action)  # state here is observation
 
@@ -99,9 +73,10 @@ class cartpole_reset_wrapper(Wrapper):
         self._reward_list.append(reward)
         self.k += 1
 
-        if self.k == 200:
-            done = True
+        if use_dessca:
+            self.dessca_model.update_coverage_pdf(data=np.transpose([state]))
 
+        done = False
         if np.any(np.abs(self.env.state) > self.state_high):
             reward = -1
             done = True
@@ -124,8 +99,19 @@ class cartpole_reset_wrapper(Wrapper):
         self.k = 0
 
         self.env.reset()
-        self.env.state = initial_states[:, self._init_state_iterator]
-        self._init_state_iterator += 1
+        if use_dessca:
+            self.env.state = self.dessca_model.sample_optimally()
+        else:
+            while True:
+                self.env.state = np.random.uniform(low=self.state_low,
+                                                   high=self.state_high)
+                if np.abs(self.env.state[3]) < 1:
+                    if self.env.state[1] > 0:
+                        if np.sqrt((self.state_high[0] - self.env.state[0]) / self.env.tau * self.delta_v) > self.env.state[1]:
+                            break
+                    if self.env.state[1] < 0:
+                        if -np.sqrt((self.state_high[0] + self.env.state[0]) / self.env.tau * self.delta_v) < self.env.state[1]:
+                            break
 
         if self.state_saver is None:
             self.state_saver = np.reshape(np.copy(self.env.state), (4, 1))
@@ -156,13 +142,17 @@ class cartpole_reset_wrapper(Wrapper):
         else:
             experiment = "Uniform"
 
-        with open('./' + experiment + "/" + experiment + '_Validation_' + str(self.try_nb) + '.json', 'w') as json_file:
+        with open('./' + experiment + "/" + experiment + '_' + str(self.try_nb) + '.json', 'w') as json_file:
             json.dump(save_dict, json_file)
 
-for i in range(50):
+
+def train_agent(idx):
+    tf.config.set_visible_devices([], 'GPU')
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
     env = CartPoleEnv()
-    env = cartpole_reset_wrapper(env, i)
+    env = cartpole_reset_wrapper(env, idx)
 
     obs_space = (env.observation_space.shape[0] + 1,)
 
@@ -177,44 +167,52 @@ for i in range(50):
     model.add(LeakyReLU(alpha=0.1))
     model.add(Dense(nb_actions, activation='linear', ))
 
-    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(eps=0.1),
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(eps=0.5),
                                   attr='eps',
-                                  value_max=0.0,
+                                  value_max=0.5,
                                   value_min=0.01,
                                   value_test=0,
-                                  nb_steps=25000)
+                                  nb_steps=40000)
 
     memory = SequentialMemory(
-        limit=5000,
+        limit=10000,
         window_length=1
     )
 
     agent = DQNAgent(model=model,
                      nb_actions=nb_actions,
                      gamma=0.99,
-                     batch_size=16,
+                     batch_size=32,
                      memory=memory,
                      memory_interval=1,
                      policy=policy,
                      train_interval=1,
-                     target_model_update=100,
+                     target_model_update=0.001,
                      enable_double_dqn=False)
 
-    agent.compile(Adam(lr=1e-4))
+    agent.compile(Adam(lr=1e-3))
+
+    agent.fit(
+        env,
+        nb_steps=100000,
+        nb_max_start_steps=0,
+        nb_max_episode_steps=200,
+        visualize=False,
+        action_repetition=1,
+        verbose=2,
+        log_interval=10000,
+        callbacks=[],
+    )
 
     if use_dessca:
         experiment = "Dessca"
     else:
         experiment = "Uniform"
 
-    agent.load_weights(filepath="./" + experiment + "/" + experiment + "_weights_" + str(i) + ".hdf5")
-
-    history = agent.test(env,
-                         nb_episodes=1000,
-                         action_repetition=1,
-                         verbose=0,
-                         visualize=False,
-                         nb_max_episode_steps=500)
-
-    print(f"Done with Agent {i} / 49")
+    agent.save_weights(filepath="./" + experiment + "/" + experiment + "_weights_" + str(idx) + ".hdf5", overwrite=True)
     env.close()
+
+
+if __name__ == '__main__':
+    with Pool() as p:
+        p.map(train_agent, range(50))

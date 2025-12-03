@@ -6,7 +6,6 @@ import json
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense, Flatten, Input, Concatenate, Lambda
-from tensorflow.keras import initializers, regularizers
 from tensorflow.keras.optimizers import Adam
 from rl.agents import DDPGAgent
 from rl.memory import SequentialMemory
@@ -14,7 +13,7 @@ from rl.random import OrnsteinUhlenbeckProcess
 
 import sys
 sys.path.append("../..")
-from DESSCA import dessca_model
+from dessca import dessca_model
 
 
 use_dessca = True

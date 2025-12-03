@@ -1,6 +1,8 @@
 # DESSCA
 **D**ensity **E**stimation-based **S**tate-**S**pace **C**overage **A**cceleration
 
+[Read the Paper](https://arxiv.org/abs/2105.08990?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+arxiv%2FQSXk+%28ExcitingAds%21+cs+updates+on+arXiv.org%29)
+
 The provided DESSCA algorithm was designed to aid the state-space exploration in reinforcement learning applications.
 In many cases where standard exploring starts may be used, 
 the degree of freedom that is provided by the initial state can be utilized to a better extent when using DESSCA instead.
@@ -14,18 +16,28 @@ An in-depth explanation of the principle, realization and improvement capabiliti
 Please cite it when using the provided code:
 
 ```
-PLACEHOLDER FOR BIBTEX SOURCE
+@misc{schenke2021improved,
+      title={Improved Exploring Starts by Kernel Density Estimation-Based State-Space Coverage Acceleration in Reinforcement Learning}, 
+      author={Maximilian Schenke and Oliver Wallscheid},
+      year={2021},
+      eprint={2105.08990},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
 ```
 
 ## Usage
 
-This code snippet serves as a minimal usage example to DESSCA.
-Firstly, import the dessca_model from DESSCA.py and create a corresponding object.
-Make Sure to have DESSCA.py in the same folder as its application file
+This code snippet serves as a minimal usage example to DESSCA. 
+Firstly, install DESSCA:
+```
+pip install dessca
+```
+Secondly, import the dessca_model and create a corresponding object.
 
 ```
 import numpy as np
-from DESSCA import dessca_model
+from dessca import dessca_model
 my_dessca_instance0 = dessca_model(box_constraints=[[-1, 1],
                                                     [-1, 1]],
                                    state_names=["x1", "x2"],
@@ -48,7 +60,7 @@ my_dessca_instance0.plot_scatter()
 
 Output:
 
-![](Figures/Scatter0.png)
+![](figures/Scatter0.png)
 
 And a corresponding coverage heatmap
 
@@ -59,7 +71,7 @@ my_dessca_instance0.plot_heatmap()
 
 Output:
 
-![](Figures/Heatmap0.png)
+![](figures/Heatmap0.png)
 
 The coverage probability density function (PDF) is updated with the given distribution.
 DESSCA can now suggest where to place the next sample.
@@ -83,7 +95,7 @@ my_dessca_instance0.plot_scatter()
 
 Output:
 
-![](Figures/Scatter1.png)
+![](figures/Scatter1.png)
 
 Let's have a look at the density:
 
@@ -93,7 +105,7 @@ my_dessca_instance0.plot_heatmap()
 
 Output:
 
-![](Figures/Heatmap1.png)
+![](figures/Heatmap1.png)
 
 ### More Features
 The scatter plots can also be rendered in an online fashion (100 samples):
@@ -111,7 +123,7 @@ for _ in range(100):
 
 Output:
 
-![](Figures/DESSCA_default.gif)
+![](figures/DESSCA_default.gif)
 
 Further, we can parameterize a memory buffer to only memorize a limited number of past samples:
 
@@ -130,7 +142,7 @@ for _ in range(100):
 
 Output:
 
-![](Figures/DESSCA_buffer.gif)
+![](figures/DESSCA_buffer.gif)
 
 See how forgetting past samples leads to a group of samples in a similar area?
 Lastly, we can also choose to use a specific reference coverage density:
@@ -156,4 +168,41 @@ for _ in range(100):
 
 Output:
 
-![](Figures/DESSCA_reference.gif)
+![](figures/DESSCA_reference.gif)
+
+DESSCA can also be used for downsampling. Let's firstly find a large dataset that we would like to reduce in size:
+
+```
+x1_samples = np.random.triangular(-1, 0.75, 1, size=(1000, 1))
+x2_samples = np.random.triangular(-1, -0.75, 1, size=(1000, 1))
+samples_2d = np.append(x1_samples, x2_samples, axis=1)
+
+my_dessca_instance4 = dessca_model(box_constraints=[[-1, 1],
+                                                    [-1, 1]],
+                                   state_names=["x1", "x2"],
+                                   bandwidth=0.5)
+my_dessca_instance4.update_coverage_pdf(data=np.transpose(samples_2d))
+my_dessca_instance4.plot_scatter()
+```
+
+Output:
+
+![](figures/Scatter2.png)
+
+Now, DESSCA can be used to reduce the set down to a specified number of remaining samples while trying to preserve the original distribution:
+
+```
+my_dessca_instance5 = dessca_model(box_constraints=[[-1, 1],
+                                                    [-1, 1]],
+                                   state_names=["x1", "x2"],
+                                   bandwidth=0.5)
+
+my_dessca_instance5.downsample(data=np.transpose(samples_2d), target_size=100)
+my_dessca_instance5.plot_scatter()
+```
+
+Output:
+
+![](figures/Scatter3.png)
+
+Comparing the edge distributions, it can be seen that they are still almost the same despite removing 90 % of the dataset's content.

@@ -1,11 +1,10 @@
 import numpy as np
-import time
 
 # This code snippet serves as a minimal usage example to DESSCA.
 # Firstly, import the dessca_model from DESSCA.py and create a corresponding object.
 # Make Sure to have DESSCA.py in the same folder as its application file
 
-from DESSCA import DesscaModel
+from dessca import DesscaModel
 my_dessca_instance0 = DesscaModel(box_constraints=[[-1, 1],
                                                     [-1, 1]],
                                    state_names=["x1", "x2"],

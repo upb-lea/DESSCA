@@ -3,3 +3,6 @@ __pycache__
 
 *.log
 *.hdf5
+.idea/
+dist/
+gpgit/

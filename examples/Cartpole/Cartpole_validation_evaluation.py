@@ -2,9 +2,10 @@ import json
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
-import os, sys
+import os
+import sys
 sys.path.append("../..")
-from DESSCA import dessca_model
+from dessca import dessca_model
 
 from matplotlib import rc
 rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})

@@ -1,10 +1,7 @@
-import json
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
 import h5py
-import os
-import sys
 
 from matplotlib import rc
 rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
