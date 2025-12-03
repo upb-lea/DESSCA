@@ -5,8 +5,8 @@ import time
 # Firstly, import the dessca_model from DESSCA.py and create a corresponding object.
 # Make Sure to have DESSCA.py in the same folder as its application file
 
-from DESSCA import dessca_model
-my_dessca_instance0 = dessca_model(box_constraints=[[-1, 1],
+from DESSCA import DesscaModel
+my_dessca_instance0 = DesscaModel(box_constraints=[[-1, 1],
                                                     [-1, 1]],
                                    state_names=["x1", "x2"],
                                    bandwidth=0.5)
@@ -45,7 +45,7 @@ my_dessca_instance0.plot_heatmap()
 
 # The scatter plots can also be rendered in an online fashion (100 samples):
 
-my_dessca_instance1 = dessca_model(box_constraints=[[-1, 1],
+my_dessca_instance1 = DesscaModel(box_constraints=[[-1, 1],
                                                     [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
@@ -57,7 +57,7 @@ for _ in range(100):
 
 # Further, we can parametrize a memory buffer to only memorize a limited number of past samples:
 
-my_dessca_instance2 = dessca_model(box_constraints=[[-1, 1],
+my_dessca_instance2 = DesscaModel(box_constraints=[[-1, 1],
                                                     [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
@@ -77,8 +77,8 @@ def reference_coverage(X):
     x1 = X[1]
     return np.less(x0**2 + x1**2, 1).astype(float)
 
-my_dessca_instance3 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
+my_dessca_instance3 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
                                   render_online=True,
