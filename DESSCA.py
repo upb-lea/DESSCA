@@ -12,7 +12,8 @@ class dessca_model:
                  render_online=False,
                  PSO_options=None,
                  state_names=None,
-                 buffer_size=None):
+                 buffer_size=None,
+                 epsilon=1e-5):
 
         # one time initialization
         if bandwidth is None:
@@ -40,9 +41,9 @@ class dessca_model:
                                                  bounds=(self.lower_bound, self.upper_bound))
 
         if reference_pdf is None:
-            # if no referece_pdf has been defined we assume uniform distribution on the axes
-            _state_space_volume = np.product([_con[-1] - _con[0] for _con in box_constraints])
-            def uniform_pdf(X):
+            # if no reference_pdf has been defined we assume uniform distribution on the axes
+            _state_space_volume = np.prod([_con[-1] - _con[0] for _con in box_constraints])
+            def uniform_pdf(dummy):
                 return 1 / _state_space_volume
             self.reference_pdf = uniform_pdf
         else:
@@ -62,6 +63,10 @@ class dessca_model:
         self.nb_datapoints = 0
         self.coverage_pdf = None
 
+        # regularization constat
+        self.epsilon = epsilon
+
+
     def update_coverage_pdf(self, data):
         if self.render_online:
             self.render_scatter(online_data=data)
@@ -80,18 +85,14 @@ class dessca_model:
 
 
         # unfortunately this is non-recursive, recursive KDE would be more time efficient
-        if np.shape(coverage_data)[1] > np.max([self.dim, 2]):
-            self.coverage_pdf = kale.KDE(dataset=coverage_data, bandwidth=self.bandwidth)
-        else:
-            # for small no. of samples the KDE package cannot perform a density estimation,
+        if np.shape(coverage_data)[0] >= np.shape(coverage_data)[1] or np.linalg.det(np.cov(coverage_data)) <= self.epsilon:
+            # for small no. of samples, the KDE might produce infeasible results
             # hence we work around this by duplicating and adding noise to the few available samples
             _tiled = np.tile(coverage_data, (1, np.max([self.dim, 2]) + 1))
             _noisy = _tiled + np.random.normal(0, 1, np.shape(_tiled))
             self.coverage_pdf = kale.KDE(dataset=_noisy, bandwidth=self.bandwidth)
-
-    def _residual_coverage(self, X):
-        # cost function for the optimization
-        return
+        else:
+            self.coverage_pdf = kale.KDE(dataset=coverage_data, bandwidth=self.bandwidth)
 
     def sample_optimally(self):
         # check if this is the first sample
@@ -101,21 +102,59 @@ class dessca_model:
                           - self.reference_pdf(np.transpose(X)),
                 iters=self.dim * 10 + 5,
                 verbose=False)
-            self.optimizer.reset()
 
         else:
-            # if this is the first sample, the optimal sample is solely based on the residual coverage
+            # if this is the first sample, the optimal sample is solely based on the reference coverage
             _, self.suggested_sample = self.optimizer.optimize(lambda X: - self.reference_pdf(np.transpose(X)),
                                                                iters=self.dim * 10 + 5,
                                                                verbose=False)
-            self.optimizer.reset()
+        self.optimizer.reset()
 
         return self.suggested_sample
+
+    def downsample(self, data, target_size):
+        # this function samples down a large dataset while preserving the original distribution
+        if self.render_online:
+            print("The render_online feature is not yet available for this function.")
+
+        self.coverage_data = np.copy(data)
+        dataset_size = np.shape(self.coverage_data)[1]
+        self.reference_pdf = kale.KDE(dataset=self.coverage_data, bandwidth=self.bandwidth)
+
+        _, suggested_sample = self.optimizer.optimize(
+            lambda X: - self.reference_pdf.density(np.transpose(X), probability=True)[1],
+            iters=self.dim * 10 + 5,
+            verbose=False)
+        distances = np.linalg.norm(np.add(np.transpose([suggested_sample]), -self.coverage_data), axis=0)
+        removal_idx = np.argmin(distances)
+        self.coverage_data = np.delete(self.coverage_data, removal_idx, 1)
+        dataset_size -= 1
+        self.coverage_pdf = kale.KDE(dataset=self.coverage_data, bandwidth=self.bandwidth)
+        self.optimizer.reset()
+
+
+        while dataset_size > target_size:
+            _, suggested_sample = self.optimizer.optimize(
+                lambda X: self.reference_pdf.density(np.transpose(X), probability=True)[1]
+                          - self.coverage_pdf.density(np.transpose(X), probability=True)[1],
+                iters=self.dim * 10 + 5,
+                verbose=False)
+            distances = np.linalg.norm(np.add(np.transpose([suggested_sample]), -self.coverage_data), axis=0)
+            removal_idx = np.argmin(distances)
+            self.coverage_data = np.delete(self.coverage_data, removal_idx, 1)
+            dataset_size -= 1
+            self.coverage_pdf = kale.KDE(dataset=self.coverage_data, bandwidth=self.bandwidth)
+            self.optimizer.reset()
+
 
     def update_and_sample(self, data=None):
         if data is not None:
             self.update_coverage_pdf(data=data)
-        return self.sample_optimally()
+
+        self.sample_optimally()
+
+        return self.suggested_sample
+
 
     def plot_heatmap(self, resolution=100, **kwargs):
         if self.dim == 1:
@@ -179,6 +218,9 @@ class dessca_model:
                                                            / (self.upper_bound[i]
                                                               - self.lower_bound[i]
                                                               + 2 * _i_margin))
+                        if np.shape(online_data)[1] > 1:
+                            self.scatter_axes[i, j].plot(online_data[j], online_data[i], ".", color="blue")
+
                     elif i == j:
                         self.scatter_axes[i, j].set_xlim(
                             [self.lower_bound[j] - _j_margin, self.upper_bound[j] + _j_margin])
@@ -192,6 +234,12 @@ class dessca_model:
                                                            / (1.2))
                     elif j > i:
                         self.scatter_axes[i, j].remove()
+
+            if np.shape(online_data)[1] == 1:
+                self.suggested_sample = online_data
+            elif np.shape(online_data)[1] > 1:
+                self.suggested_sample = np.full((np.shape(online_data)[0], 1), None, dtype=object)
+                online_data = np.full((np.shape(online_data)[0], 1), None, dtype=object)
 
         for i in range(self.dim):
             for j in range(self.dim):
@@ -210,8 +258,7 @@ class dessca_model:
 
         plt.pause(0.001)
 
-    def plot_scatter(self,
-                     scatter_kwargs={}):
+    def plot_scatter(self, scatter_kwargs={}):
 
 
         if not hasattr(self, "scatter_fig") or not self.render_online:
@@ -232,6 +279,7 @@ class dessca_model:
                             self.scatter_axes[i, j].set_xlabel(self.state_names[j])
                         if j == 0:
                             self.scatter_axes[i, j].set_ylabel(self.state_names[i])
+
                         self.scatter_axes[i, j].grid(True)
                         self.scatter_axes[i, j].set_aspect((self.upper_bound[j]
                                                             - self.lower_bound[j]
