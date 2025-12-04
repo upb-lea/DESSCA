@@ -5,3 +5,4 @@ __pycache__
 *.hdf5
 .idea/
 dist/
+gpgit/
