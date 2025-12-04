@@ -3,7 +3,7 @@
 
 DESSCA is a sampling algorithm whose strategy pursues optimal coverage of a given space. 
 Originally, it had been 
-[proposed as an exploring starts strategy in reinforcement learning problems](https://arxiv.org/abs/2105.08990?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+arxiv%2FQSXk+%28ExcitingAds%21+cs+updates+on+arXiv.org%29)
+[proposed as an exploring starts strategy in reinforcement learning problems](https://arxiv.org/abs/2105.08990)
 , i.e., with the intention of initializing the learning environment to a previously unvisited state for higher informational gain.
 Over the years, however, DESSCA showed its quality as a universal design of experiments tool, 
 which has been utilized for maximized informational gain also when
