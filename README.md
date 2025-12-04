@@ -1,14 +1,15 @@
 # DESSCA
 **D**ensity **E**stimation-based **S**tate-**S**pace **C**overage **A**cceleration
 
-[Read the Paper](https://arxiv.org/abs/2105.08990?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+arxiv%2FQSXk+%28ExcitingAds%21+cs+updates+on+arXiv.org%29)
-
-The provided DESSCA algorithm was designed to aid the state-space exploration in reinforcement learning applications.
-In many cases where standard exploring starts may be used, 
-the degree of freedom that is provided by the initial state can be utilized to a better extent when using DESSCA instead.
-While regular, unsupervised exploring starts often lead to an unfavorable distribution of sample points in the state space, since the underlying system dynamics typically has particularly attractive regions, DESSCA analyzes the previous sample distribution and explores at the beginning of an episode targeted regions which are underrepresented compared to a target probability density distribution.
-
-Suggestions or experiences concerning applications of DESSCA outside reinforcement learning are welcome!
+DESSCA is a sampling algorithm whose strategy pursues optimal coverage of a given space. 
+Originally, it had been 
+[proposed as an exploring starts strategy in reinforcement learning problems](https://arxiv.org/abs/2105.08990?utm_source=feedburner&utm_medium=feed&utm_campaign=Feed%3A+arxiv%2FQSXk+%28ExcitingAds%21+cs+updates+on+arXiv.org%29)
+, i.e., with the intention of initializing the learning environment to a previously unvisited state for higher informational gain.
+Over the years, however, DESSCA showed its quality as a universal design of experiments tool, 
+which has been utilized for maximized informational gain also when
+[collecting data in resource-heavy investigations](https://ieeexplore.ieee.org/abstract/document/9589225)
+or for
+evaluating and certifying devices under test systematically.
 
 ## Citing
 An in-depth explanation of the principle, realization and improvement capabilities of DESSCA can be found in the article 
@@ -33,15 +34,15 @@ Firstly, install DESSCA:
 ```
 pip install dessca
 ```
-Secondly, import the dessca_model and create a corresponding object.
+Secondly, import the DesscaModel and create a corresponding object.
 
 ```
 import numpy as np
-from dessca import dessca_model
-my_dessca_instance0 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
-                                   state_names=["x1", "x2"],
-                                   bandwidth=0.5)
+from dessca import DesscaModel
+my_dessca_instance0 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
+                                  state_names=["x1", "x2"],
+                                  bandwidth=0.5)
 ```
 
 This model instance can be used on a two-dimensional state space.
@@ -50,9 +51,9 @@ Here are some samples:
 
 ```
 samples_2d = np.array([[-0.8, -0.8],
-                       [0.8, -0.8],
-                       [-0.8, 0.8],
-                       [0, 0]])
+                       [ 0.8, -0.8],
+                       [-0.8,  0.8],
+                       [ 0.0,  0.0]])
 
 my_dessca_instance0.update_coverage_pdf(data=np.transpose(samples_2d))
 my_dessca_instance0.plot_scatter()
@@ -110,8 +111,8 @@ Output:
 ### More Features
 The scatter plots can also be rendered in an online fashion (100 samples):
 ```
-my_dessca_instance1 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
+my_dessca_instance1 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
                                   render_online=True)
@@ -128,8 +129,8 @@ Output:
 Further, we can parameterize a memory buffer to only memorize a limited number of past samples:
 
 ```
-my_dessca_instance2 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
+my_dessca_instance2 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
                                   render_online=True,
@@ -154,8 +155,8 @@ def reference_coverage(X):
     x1 = X[1]
     return np.less(x0**2 + x1**2, 1).astype(float)
 
-my_dessca_instance3 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
+my_dessca_instance3 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
                                   state_names=["x1", "x2"],
                                   bandwidth=0.1,
                                   render_online=True,
@@ -177,10 +178,10 @@ x1_samples = np.random.triangular(-1, 0.75, 1, size=(1000, 1))
 x2_samples = np.random.triangular(-1, -0.75, 1, size=(1000, 1))
 samples_2d = np.append(x1_samples, x2_samples, axis=1)
 
-my_dessca_instance4 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
-                                   state_names=["x1", "x2"],
-                                   bandwidth=0.5)
+my_dessca_instance4 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
+                                  state_names=["x1", "x2"],
+                                  bandwidth=0.5)
 my_dessca_instance4.update_coverage_pdf(data=np.transpose(samples_2d))
 my_dessca_instance4.plot_scatter()
 ```
@@ -192,10 +193,10 @@ Output:
 Now, DESSCA can be used to reduce the set down to a specified number of remaining samples while trying to preserve the original distribution:
 
 ```
-my_dessca_instance5 = dessca_model(box_constraints=[[-1, 1],
-                                                    [-1, 1]],
-                                   state_names=["x1", "x2"],
-                                   bandwidth=0.5)
+my_dessca_instance5 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
+                                  state_names=["x1", "x2"],
+                                  bandwidth=0.5)
 
 my_dessca_instance5.downsample(data=np.transpose(samples_2d), target_size=100)
 my_dessca_instance5.plot_scatter()
