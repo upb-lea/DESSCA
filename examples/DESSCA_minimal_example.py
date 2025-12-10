@@ -1,6 +1,7 @@
 # This code snippet serves as a minimal usage example to DESSCA.
 
 import numpy as np
+import matplotlib.pyplot as plt
 from dessca import DesscaModel
 
 my_dessca_instance0 = DesscaModel(box_constraints=[[-1, 1],
@@ -52,6 +53,8 @@ next_sample_suggest = my_dessca_instance1.update_and_sample()
 for _ in range(100):
     next_sample_suggest = my_dessca_instance1.update_and_sample(np.transpose([next_sample_suggest]))
 
+plt.close()  # clean up the plot
+
 # Further, we can parametrize a memory buffer to only memorize a limited number of past samples:
 
 my_dessca_instance2 = DesscaModel(box_constraints=[[-1, 1],
@@ -65,9 +68,10 @@ next_sample_suggest = my_dessca_instance2.update_and_sample()
 for _ in range(100):
     next_sample_suggest = my_dessca_instance2.update_and_sample(np.transpose([next_sample_suggest]))
 
+plt.close()  # clean up the plot
+
 # See how forgetting past samples leads to a group of samples in a similar area?
 # Lastly, we can also choose to use a specific reference coverage density:
-
 
 def reference_coverage(X):
     # for uniform distribution on a given shape the value range of the reference coverage is not important
@@ -86,3 +90,24 @@ my_dessca_instance3 = DesscaModel(box_constraints=[[-1, 1],
 next_sample_suggest = my_dessca_instance3.update_and_sample()
 for _ in range(100):
     next_sample_suggest = my_dessca_instance3.update_and_sample(np.transpose([next_sample_suggest]))
+
+plt.close()  # clean up the plot
+
+# Unfortunately, the suggestion mechanism based on kernel density estimation gets slower for larger amounts of samples.
+# For some scenarios, it can hence be feasible to run DESSCA with a finite resolution, wherein computational complexity
+# is getting decoupled from amount of data (i.e., it does not get slower over time).
+# In the next snippet, we define a discrete resolution of 10, which is probably too low to be useful but
+# visualizes the mechanism very nicely:
+
+my_dessca_instance4 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
+                                  state_names=["x1", "x2"],
+                                  bandwidth=0.1,
+                                  disc_resolution=10,
+                                  render_online=True)
+
+next_sample_suggest = my_dessca_instance4.update_and_sample()
+for _ in range(100):
+    next_sample_suggest = my_dessca_instance4.update_and_sample(np.transpose([next_sample_suggest]))
+
+plt.close()  # clean up the plot
