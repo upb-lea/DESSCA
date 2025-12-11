@@ -13,16 +13,25 @@ class DesscaModel:
                  pso_options=None,
                  state_names=None,
                  buffer_size=None,
+                 disc_resolution=None,
                  epsilon=1e-5):
 
         ### one time initialization
         # a bandwidth of 0.1 yielded empirically good results for box constraints of [-1, 1]
-
-        self.bandwidth = bandwidth  # set the bandwidth for this estimator
         self.render_online = render_online
         self.dim = len(box_constraints)
         self.lower_bound = np.array(box_constraints)[:, 0]
         self.upper_bound = np.array(box_constraints)[:, -1]
+        self.disc_resolution = disc_resolution
+
+        if np.isscalar(bandwidth):
+            self.bandwidth = [bandwidth for _ in range(self.dim)]  # set the bandwidth for this estimator
+        else:
+            self.bandwidth = bandwidth
+        uniform_variance = np.diag((self.upper_bound - self.lower_bound) ** 2) / 12.0
+        self._disc_covariance = np.diag(self.bandwidth) ** 2 @ uniform_variance
+        self._disc_det_cov = np.linalg.det(self._disc_covariance)
+        self._disc_inv_cov = np.linalg.inv(self._disc_covariance)
 
         if pso_options is None:
             pso_options = {'c1': 2, 'c2': 2, 'w': 0.6}
@@ -41,8 +50,8 @@ class DesscaModel:
             # if no reference_pdf has been defined we assume uniform distribution on the axes
             _state_space_volume = np.prod([_con[-1] - _con[0] for _con in box_constraints])
 
-            def uniform_pdf(_):
-                return 1 / _state_space_volume
+            def uniform_pdf(x):
+                return np.ones_like(x[0]) / _state_space_volume
 
             self.reference_pdf = uniform_pdf
         else:
@@ -58,11 +67,33 @@ class DesscaModel:
             self.buffer_idx = 0
             self.coverage_data = np.empty((self.dim, buffer_size)) * np.nan
 
-        # cannot be determined before data is available
+        # initializing
         self.nb_datapoints = 0
-        self.coverage_pdf = None
         self.suggested_sample = None
         self._last_sample = None
+
+        if self.disc_resolution is None:
+            # continuous mode
+            self.coverage_pdf = None
+            self._bins_volume = 0.0  # infinite resolution -> infinitesimal bin volume
+
+        elif isinstance(self.disc_resolution, int):
+            # discrete mode, TODO: allow different resolution for each dimension
+            self.resolution_per_dimension = [self.disc_resolution for _ in range(self.dim)]
+
+            self.coverage_pdf = np.zeros(self.resolution_per_dimension)
+            self._bins_size = (self.upper_bound - self.lower_bound) / self.disc_resolution
+            self._bins_volume = np.prod(self._bins_size)
+            self._coordinate_mesh = np.meshgrid(*[np.linspace(self.lower_bound[i] + self._bins_size[i] / 2,
+                                                              self.upper_bound[i] - self._bins_size[i] / 2,
+                                                              self.disc_resolution,
+                                                              endpoint=True) for i in range(self.dim)])
+            self._coordinate_list = np.stack([_mesh.flatten() for _mesh in self._coordinate_mesh])
+            self.reference_pdf = np.reshape(self.reference_pdf(self._coordinate_list),
+                                            shape=self.resolution_per_dimension)
+
+        else:
+            raise Exception(f"Discretization resolution must be an integer or None, but is {self.disc_resolution}.")
 
         # regularization constat
         self.epsilon = epsilon
@@ -77,6 +108,7 @@ class DesscaModel:
         if self.render_online:
             self.render_scatter(online_data=data)
         # append the newly acquired data
+
         if self.buffer_idx is None:
             self.coverage_data = np.append(self.coverage_data, np.array(data), axis=1)
             coverage_data = np.copy(self.coverage_data)
@@ -89,33 +121,63 @@ class DesscaModel:
             else:
                 coverage_data = np.copy(self.coverage_data)
 
-        # unfortunately this is non-recursive, recursive KDE would be more time efficient
-        if (np.shape(coverage_data)[0] >= np.shape(coverage_data)[1] or
-                np.linalg.det(np.cov(coverage_data)) <= self.epsilon):
-            # for small no. of samples, the KDE might produce infeasible results
-            # hence we work around this by duplicating and adding noise to the few available samples
-            _tiled = np.tile(coverage_data, (1, np.max([self.dim, 2]) + 1))
-            _noisy = _tiled + np.random.normal(0, 1, np.shape(_tiled))
-            self.coverage_pdf = kale.KDE(dataset=_noisy, bandwidth=self.bandwidth, diagonal=True)
+
+
+        if self.disc_resolution is None:
+        # use kalepy KDE in continuous mode
+            if (np.shape(coverage_data)[0] >= np.shape(coverage_data)[1] or
+                    np.linalg.det(np.cov(coverage_data)) <= self.epsilon):
+                # for small no. of samples, the KDE might produce infeasible results
+                # hence we work around this by duplicating and adding noise to the few available samples
+                _tiled = np.tile(coverage_data, (1, np.max([self.dim, 2]) + 1))
+                _noisy = _tiled + np.random.normal(0, 1, np.shape(_tiled))
+                self.coverage_pdf = kale.KDE(dataset=_noisy, bandwidth=self.bandwidth, diagonal=True)
+            else:
+                self.coverage_pdf = kale.KDE(dataset=coverage_data, bandwidth=self.bandwidth, diagonal=True)
+            self.nb_datapoints = np.clip(self.nb_datapoints + np.shape(data)[1], 0, self.buffer_size)
+
         else:
-            self.coverage_pdf = kale.KDE(dataset=coverage_data, bandwidth=self.bandwidth, diagonal=True)
+            # use own meshgrid KDE in discrete mode
+            self.nb_datapoints = np.clip(self.nb_datapoints + np.shape(data)[1], 0, self.buffer_size)
+            _kernels = self._discretized_kernels(data)
+            self.coverage_pdf = (
+                    ((self.nb_datapoints - np.shape(data)[1]) / self.nb_datapoints) * self.coverage_pdf +
+                    _kernels / self.nb_datapoints
+            )
+
 
     def sample_optimally(self):
-        # check if this is the first sample
-        if self.coverage_pdf is not None:
-            def _optim_problem(x):
-                result = (self.coverage_pdf.density(np.transpose(x), probability=True)[1] -
-                          self.reference_pdf(np.transpose(x)))
-                return result
+
+        if self.disc_resolution is None:
+            # continuous mode
+
+            # check if this is the first sample
+            if self.coverage_pdf is not None:
+                def _optim_problem(x):
+                    result = (self.coverage_pdf.density(np.transpose(x), probability=True)[1] -
+                              self.reference_pdf(np.transpose(x)))
+                    return result
+
+            else:
+                # if this is the first sample, the optimal sample is solely based on the reference coverage
+                def _optim_problem(x):
+                    result = - self.reference_pdf(np.transpose(x))
+                    return result
+
+            _, self.suggested_sample = self.optimizer.optimize(_optim_problem, iters=self.dim * 10 + 5, verbose=False)
+            self.optimizer.reset()
 
         else:
-            # if this is the first sample, the optimal sample is solely based on the reference coverage
-            def _optim_problem(x):
-                result = - self.reference_pdf(np.transpose(x))
-                return result
+            # discrete mode
+            if self.coverage_pdf is not None:
+                _min_idx = np.argmin(self.coverage_pdf - self.reference_pdf)
 
-        _, self.suggested_sample = self.optimizer.optimize(_optim_problem, iters=self.dim * 10 + 5, verbose=False)
-        self.optimizer.reset()
+            else:
+                # if this is the first sample, the optimal sample is solely based on the reference coverage
+                _min_idx = np.argmax(self.reference_pdf)
+
+            _min_idx = np.unravel_index(_min_idx, self.coverage_pdf.shape)
+            self.suggested_sample = np.array([_mesh[_min_idx] for _mesh in self._coordinate_mesh])
 
         return self.suggested_sample
 
@@ -163,6 +225,24 @@ class DesscaModel:
         self.sample_optimally()
 
         return self.suggested_sample
+
+    def _continuous_kernel(self, center):
+        def placed_kernel(x):
+            diff = x[:, :, np.newaxis] - center[:, np.newaxis, :]
+            kernel_eval = (np.exp(-0.5 * np.einsum("dnm, dj, dnm -> nm",
+                                                   diff, self._disc_inv_cov, diff)) /
+                           np.sqrt((2 * np.pi) ** self.dim * self._disc_det_cov))
+
+            return np.mean(kernel_eval, axis=1)
+
+        return placed_kernel
+
+    def _discretized_kernels(self, data):
+        placed_kernels = self._continuous_kernel(data)
+        disc_kernels = placed_kernels(self._coordinate_list)
+        disc_kernels = np.reshape(disc_kernels, shape=self.resolution_per_dimension) * self._bins_volume
+
+        return disc_kernels
 
     def plot_heatmap(self, resolution=100, **kwargs):
         if self.dim == 1:

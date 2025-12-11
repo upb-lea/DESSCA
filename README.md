@@ -83,7 +83,9 @@ print(next_sample_suggest)
 ```
 
 Output:
+```
 [0.85517754 0.94340648]
+```
 (Note: results are a little random in scenarios with very few samples)
 
 As was to be expected, the suggestion is in the upper right corner of the state space.
@@ -171,8 +173,36 @@ Output:
 
 ![](figures/DESSCA_reference.gif)
 
-DESSCA can also be used for downsampling. Let's firstly find a large dataset that we would like to reduce in size:
+Unfortunately, the suggestion mechanism based on kernel density estimation gets slower for larger amounts of samples.
+For some scenarios, it can hence be feasible to run DESSCA with a finite resolution, wherein computational complexity
+is getting decoupled from amount of data (i.e., it does not get slower over time). 
+In the next snippet, we define a discrete resolution of 10, which is probably too low to be useful but
+visualizes the mechanism very nicely:
 
+```
+my_dessca_instance4 = DesscaModel(box_constraints=[[-1, 1],
+                                                   [-1, 1]],
+                                  state_names=["x1", "x2"],
+                                  bandwidth=0.1,
+                                  disc_resolution=10,
+                                  render_online=True)
+
+next_sample_suggest = my_dessca_instance4.update_and_sample()
+for _ in range(100):
+    next_sample_suggest = my_dessca_instance4.update_and_sample(np.transpose([next_sample_suggest]))
+```
+
+Output:
+
+![](figures/LowRes.gif)
+
+However, the discretized mode comes at a relatively large base cost and is, hence, only suggested if datasets have grown
+beyond a certain range. The following diagrams give a qualitative overview of the computational effort. 
+Quantitatively, execution time may of course vary greatly from one machine to another.
+
+<img src="figures/2D_Timing_Analysis.png" width="300"/> <img src="figures/3D_Timing_Analysis.png" width="312"/> 
+
+DESSCA can also be used for downsampling. Let's firstly find a large dataset that we would like to reduce in size:
 ```
 x1_samples = np.random.triangular(-1, 0.75, 1, size=(1000, 1))
 x2_samples = np.random.triangular(-1, -0.75, 1, size=(1000, 1))
@@ -187,11 +217,9 @@ my_dessca_instance4.plot_scatter()
 ```
 
 Output:
-
 ![](figures/Scatter2.png)
 
 Now, DESSCA can be used to reduce the set down to a specified number of remaining samples while trying to preserve the original distribution:
-
 ```
 my_dessca_instance5 = DesscaModel(box_constraints=[[-1, 1],
                                                    [-1, 1]],
@@ -203,7 +231,6 @@ my_dessca_instance5.plot_scatter()
 ```
 
 Output:
-
 ![](figures/Scatter3.png)
 
 Comparing the edge distributions, it can be seen that they are still almost the same despite removing 90 % of the dataset's content.
