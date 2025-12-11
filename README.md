@@ -60,6 +60,7 @@ my_dessca_instance0.plot_scatter()
 ```
 
 Output:
+
 ![](figures/Scatter0.png)
 
 And a corresponding coverage heatmap
@@ -70,6 +71,7 @@ my_dessca_instance0.plot_heatmap()
 ```
 
 Output:
+
 ![](figures/Heatmap0.png)
 
 The coverage probability density function (PDF) is updated with the given distribution.
@@ -81,7 +83,9 @@ print(next_sample_suggest)
 ```
 
 Output:
+```
 [0.85517754 0.94340648]
+```
 (Note: results are a little random in scenarios with very few samples)
 
 As was to be expected, the suggestion is in the upper right corner of the state space.
@@ -93,6 +97,7 @@ my_dessca_instance0.plot_scatter()
 ```
 
 Output:
+
 ![](figures/Scatter1.png)
 
 Let's have a look at the density:
@@ -102,6 +107,7 @@ my_dessca_instance0.plot_heatmap()
 ```
 
 Output:
+
 ![](figures/Heatmap1.png)
 
 ### More Features
@@ -119,6 +125,7 @@ for _ in range(100):
 ```
 
 Output:
+
 ![](figures/DESSCA_default.gif)
 
 Further, we can parameterize a memory buffer to only memorize a limited number of past samples:
@@ -137,6 +144,7 @@ for _ in range(100):
 ```
 
 Output:
+
 ![](figures/DESSCA_buffer.gif)
 
 See how forgetting past samples leads to a group of samples in a similar area?
@@ -162,6 +170,7 @@ for _ in range(100):
 ```
 
 Output:
+
 ![](figures/DESSCA_reference.gif)
 
 Unfortunately, the suggestion mechanism based on kernel density estimation gets slower for larger amounts of samples.
@@ -184,7 +193,14 @@ for _ in range(100):
 ```
 
 Output:
+
 ![](figures/LowRes.gif)
+
+However, the discretized mode comes at a relatively large base cost and is, hence, only suggested if datasets have grown
+beyond a certain range. The following diagrams give a qualitative overview of the computational effort. 
+Quantitatively, execution time may of course vary greatly from one machine to another.
+
+<img src="figures/2D_Timing_Analysis.png" width="300"/> <img src="figures/3D_Timing_Analysis.png" width="312"/> 
 
 DESSCA can also be used for downsampling. Let's firstly find a large dataset that we would like to reduce in size:
 ```
