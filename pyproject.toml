@@ -1,6 +1,6 @@
 [project]
 name = "dessca"
-version = "0.1.2"
+version = "1.0.0"
 authors = [
     { name = "Maximilian Schenke" },
 ]
